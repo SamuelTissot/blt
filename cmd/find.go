@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	vegeta "github.com/tsenart/vegeta/lib"
@@ -59,7 +60,7 @@ func find(c *cli.Context) error {
 
 	d := c.Int("duration")
 	reader := bufio.NewReader(file)
-	targets := vegeta.NewHTTPTargeter(reader, []byte{}, h)
+	targets, _ := vegeta.NewEagerTargeter(reader, []byte{}, h)
 	// first, find the point at which the system breaks
 	for {
 		if testRate(rate, sla, targets, d) {
@@ -98,6 +99,24 @@ func testRate(rate int, sla time.Duration, t vegeta.Targeter, d int) bool {
 		fmt.Printf("😡; Failed at %d req/sec (latency %s) --- responses\n%s\n", rate, latency, string(codes))
 		return false
 	}
+
+	for k, _ := range metrics.StatusCodes {
+		c, err := strconv.Atoi(k)
+		if err != nil {
+			panic(err)
+		}
+		if c >= 500 || c == 0 {
+			fmt.Printf("😡; Failed at %d req/sec (latency %s) 0 codes --- responses\n%s\n", rate, latency, string(codes))
+			return false
+		}
+	}
+
 	fmt.Printf("😃; Success at %d req/sec (latency %s) --- responses:\n%s\n", rate, latency, string(codes))
+	if len(metrics.Errors) > 0 {
+		fmt.Println("with ERRORS:")
+		for _, v := range metrics.Errors {
+			fmt.Println(v)
+		}
+	}
 	return true
 }
